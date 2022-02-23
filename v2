@@ -1,0 +1,39 @@
+// from reddit post https://www.reddit.com/r/FoundryVTT/comments/so0v2x/macro_help_please_canvastokenscreatemany_is_not_a/?utm_source=share&utm_medium=ios_app&utm_name=iossmf
+// Will create a fresh copy of all selected tokens (or all on board if none selected) with broken actor links.
+// Main use is for when you have deleted the source actor by mistake and broke all of the token's actor links
+
+function hasBrokenLink(tokenDocument) {
+  return !game.actors.has(tokenDocument.data.actorId);
+}
+
+const scene = canvas.scene;
+
+// get the list of tokens to respawn
+const tokenDocuments =
+  canvas.tokens.controlled.length > 0
+    ? canvas.tokens.controlled.map((token) => token.document).filter(hasBrokenLink)
+    : scene.tokens.filter(hasBrokenLink);
+
+// generate the info needed
+const { tokenDataPromises, idsToDelete } = tokenDocuments.reduce(
+  ({ tokenDataPromises, idsToDelete }, tokenDocument) => {
+    const tokenDataPromise = game.actors
+      .getName(tokenDocument.name)
+      ?.getTokenData({ x: tokenDocument.data.x, y: tokenDocument.data.y });
+
+    if (!tokenDataPromise) {
+      return { tokenDataPromises, idsToDelete };
+    }
+
+    return {
+      tokenDataPromises: tokenDataPromises.concat(tokenDataPromise),
+      idsToDelete: idsToDelete.concat(tokenDocument.id),
+    };
+  },
+  { tokenDataPromises: [], idsToDelete: [] }
+);
+
+const tokenDataArray = (await Promise.all(tokenDataPromises)).map((tokenData) => tokenData.toObject());
+
+await scene.createEmbeddedDocuments("Token", tokenDataArray);
+await scene.deleteEmbeddedDocuments("Token", idsToDelete);
